@@ -23,6 +23,9 @@
 #define EXTRAPOLATE      "-e"
 #define OUTPUT_SAMPLE    "-o"
 #define N_BURN_ITER      "-b"
+#define NUM_THREADS      "-nt"
+#define LOW_MEM		 "-lm"
+
 
 #define CSV_FILE_SUFFIX         ".csv"
 #define FREQ_FILE_SUFFIX        "_f.csv"
@@ -64,6 +67,11 @@ typedef struct s_Params
   int bOutputSample;
   /*rarefy sample to lowest sample size*/
   int nRarefy;
+  /*Number of omp threads to use*/
+  int numThreads;
+  /*Using "low memory" routines (sparse Stirling and on-disk sample records) */
+  int lowmem;
+
 } t_Params;
 
 typedef struct s_Data
@@ -88,6 +96,8 @@ void getCommandLineParams(t_Params *ptParams,int argc,char *argv[]);
 void readAbundanceData(const char *szFile, t_Data *ptData);
 
 void Stirling(double ***paadStirlingMatrix,double** padNormMatrix,unsigned long n);
+
+void StirlingLowMem(double ***paadStirlingMatrix,double** padNormMatrix,unsigned long n, int ** aanX, unsigned long ii, unsigned long jj);
 
 int maxX(t_Data *ptData);
 

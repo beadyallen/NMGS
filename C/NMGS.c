@@ -64,7 +64,30 @@ int main(int argc, char* argv[])
   gsl_rng_env_setup();
 
   gsl_set_error_handler_off();
-  
+ 
+
+ 
+  numThreads = tParams.numThreads;
+
+#if defined (_OPENMP)
+  omp_set_num_threads(numThreads);
+  printf("Running %d threads\n", numThreads);
+#endif
+
+  gsl_rng_env_setup();
+
+  gsl_set_error_handler_off();
+
+  ptGSLRNGType = gsl_rng_default;
+
+  aptGSLRNG = (gsl_rng**) malloc( numThreads * sizeof(gsl_rng*));
+
+  for (i=0; i < numThreads; i++){
+        aptGSLRNG[i] = gsl_rng_alloc(ptGSLRNGType);
+        if (!aptGSLRNG[i]) goto rngError;
+  }
+
+ 
   ptGSLRNGType = gsl_rng_default;
   ptGSLRNG     = gsl_rng_alloc(ptGSLRNGType);
 
@@ -150,7 +173,14 @@ int main(int argc, char* argv[])
   }
 	
   //generateStirlingDMatrix(aadStirlingMatrix, nMaxX);
-  Stirling(&aadStirlingMatrix,&adLogNormalisation,nMaxX);
+  if (!tParams.lowmem){
+	  Stirling(&aadStirlingMatrix,&adLogNormalisation,nMaxX);
+  }else {
+	  StirlingLowMem(&aadStirlingMatrix,&adLogNormalisation, nMaxX, aanX, nN, nS);
+  }
+
+
+
 	
   adStirlingVector = (double *) malloc((nMaxX + 1)*sizeof(double));
   if(!adStirlingVector)
@@ -520,6 +550,27 @@ void getCommandLineParams(t_Params *ptParams,int argc,char *argv[])
     ptParams->nMaxIter = DEF_MAX_ITER;
   }
 
+  szTemp = extractParameter(argc,argv,NUM_THREADS,OPTION);
+  if(szTemp != NULL){
+    ptParams->numThreads = strtol(szTemp,&cError,10);
+    if(*cError != '\0'){
+      goto error;
+    }
+  }
+  else{
+    ptParams->numThreads = 1;
+  }
+
+
+  szTemp = extractParameter(argc,argv,LOW_MEM, OPTION);
+  if (szTemp != NULL){
+    ptParams->lowmem = 1;
+  } else {
+    ptParams->lowmem = 0;
+  }
+
+
+
   return;
 
  error:
@@ -724,6 +775,125 @@ void Stirling(double ***paadStirlingMatrix,double** padNormMatrix,unsigned long 
   fflush(stderr);
   exit(EXIT_FAILURE);
 }
+
+
+//Alternative implementation of Stirling
+// Only allocates rows in the Stirling matrix that'll actually be used.
+
+
+void StirlingLowMem(double ***paadStirlingMatrix,double** padNormMatrix,unsigned long n, int** aanX, unsigned long ii, unsigned long jj ){
+  double **aadStirlingMatrix = NULL, *adNormMatrix = NULL;
+  unsigned long nN2 = n + 2, nN1 = n + 1;
+  double *adS=(double *) malloc(nN2*sizeof(double));
+  double *adL=(double *) malloc(nN2*sizeof(double));
+  double dMaxVal = 0.0;
+  unsigned long i = 0, k = 0, j = 0;
+  //
+  //Build up a "set" of required abundances (i.e. which rows in aadStirlingMatrix will we need?)
+  int *uniqueX = (int*) malloc((n+1)*sizeof(int));
+  for (i=0; i<=n; i++){
+        uniqueX[i]=0;
+  }
+  // Assume we need 0 and 1 ...
+  uniqueX[0] = 1;
+  uniqueX[1] = 1;
+
+  //Loop through the abundances, and mark each one as "seen"
+  for ( i=0; i < ii; i++ ){
+        for ( j=0; j < jj; j++ ){
+                if (aanX[i][j] > 0){
+                        uniqueX[  aanX[i][j] ] = 1;
+                }
+        }
+  }
+
+  
+  aadStirlingMatrix = (double **) malloc(nN1*sizeof(double*));
+  if(!aadStirlingMatrix)
+    goto memoryError;
+
+  for(i = 0; i < nN2; i++){
+    adS[i] = 0.0;
+    adL[i] = 0.0;
+  }
+
+  for(i = 0; i < nN1; i++){
+    //Extra check to see if we need to allocate this row...
+    if (uniqueX[i+1]){
+       aadStirlingMatrix[i] = (double *) malloc((i+1)*sizeof(double));
+
+       if(!aadStirlingMatrix[i])
+         goto memoryError;
+
+       for(j = 0; j < i + 1; j++){
+         aadStirlingMatrix[i][j] = 0.0;
+       }
+
+     }
+   }
+
+  //Make sure aadStirlingMatrix[0] is dealt with
+  if (!aadStirlingMatrix[0]){
+        aadStirlingMatrix[0] = (double *) malloc(2*sizeof(double));
+  }
+
+  adNormMatrix = (double *) malloc(nN1*sizeof(double));
+  if(!adNormMatrix)
+    goto memoryError;
+
+  if(!adS)
+    goto memoryError;
+
+  if(!adL)
+    goto memoryError;
+
+  adS[1] = 1.0;
+  adL[1] = 0.0;
+
+  aadStirlingMatrix[0][0] = 1.0;
+  adNormMatrix[0] = 0.0;
+
+  for(k = 2; k < nN1; k++){
+    adL[k]  = 0;
+    dMaxVal = 0.0;
+
+    for(j = k; j > 0;--j)
+      adS[j]=adS[j-1]+(k-1)*adS[j];
+
+    for(j = 1;j <= k;j++)
+      if(adS[j] > dMaxVal)
+        dMaxVal=adS[j];
+
+    for(j = 1; j <= k;j++)
+      adS[j]/=dMaxVal;
+
+    adL[k] = adL[k-1]+ log(dMaxVal);
+
+    // Only bother storing the row if we're going to use it.
+    if(uniqueX[k]){
+      for(j=1;j<=k;j++){
+          aadStirlingMatrix[k-1][j-1]= log(adS[j]);
+      }
+    }
+    adNormMatrix[k-1]=adL[k];    
+  }
+
+  (*paadStirlingMatrix) = aadStirlingMatrix;
+  (*padNormMatrix) = adNormMatrix;
+
+  free(adS);
+  free(adL);
+
+  return;
+
+ memoryError:
+  fprintf(stderr, "Failed allocating memory in Stirling\n");
+  fflush(stderr);
+  exit(EXIT_FAILURE);
+}
+
+
+
 
 void generateStirlingMatrix(unsigned long **aalStirling, unsigned long lK)
 {
