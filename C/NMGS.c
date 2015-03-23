@@ -50,9 +50,16 @@ int main(int argc, char* argv[])
   int nMaxX = 0, nIter = 0, nMaxIter = 0;
   t_Params tParams;
   t_Data   tData;
+  int numThreads;
+  //Parallel RNG array (1 per thread)
+  gsl_rng            **aptGSLRNG     = NULL;
   gsl_rng            *ptGSLRNG     = NULL;
   const gsl_rng_type *ptGSLRNGType = NULL;
-  double             *adLogNormalisation = NULL, *adLogProbV = NULL, *adLogProbAdjustV, *adProbV, *adCProbV; 
+  double             *adLogNormalisation = NULL, *adLogProbV = NULL, *adLogProbAdjustV, *adProbV, *adCProbV;
+
+  //Parallel arrays
+  double 	     **aadLogProbV = NULL, **aadProbV = NULL, **aadCProbV;
+   
   double             **aadStirlingMatrix = NULL, *adStirlingVector = NULL;
   double             *adJ = NULL, *adM = NULL, **aadMStore = NULL, **aadIStore = NULL, *adThetaStore = NULL;
   int                **aanTStore = NULL;
@@ -80,6 +87,7 @@ int main(int argc, char* argv[])
 
   ptGSLRNGType = gsl_rng_default;
 
+//Use multiple RNGs (one per thread) - makes calculations deterministic (given same thread count)
   aptGSLRNG = (gsl_rng**) malloc( numThreads * sizeof(gsl_rng*));
 
   for (i=0; i < numThreads; i++){
@@ -96,8 +104,12 @@ int main(int argc, char* argv[])
   /*get command line params*/
   getCommandLineParams(&tParams, argc, argv);
   nMaxIter = tParams.nMaxIter;
+
+
   /*set RNG seed*/
-  gsl_rng_set (ptGSLRNG, tParams.nL);
+  for (i=0; i<numThreads; i++){
+  	gsl_rng_set (aptGSLRNG[i], tParams.nL+10*i);
+  }
   	
   /*read in abundance distribution*/
   readAbundanceData(tParams.szInputFile,&tData);
@@ -272,7 +284,11 @@ int main(int argc, char* argv[])
     
     adThetaStore[nIter] = sampleTheta(ptGSLRNG, dTheta, anTR, nN, nS);
 
-    sampleT(nIter, ptGSLRNG, aanX, aanT, aadIStore, aadMStore, aadStirlingMatrix, nN, nS, adLogProbV, adProbV, adCProbV);
+    if (numThreads ==1){
+   	sampleT(nIter, ptGSLRNG, aanX, aanT, aadIStore, aadMStore, aadStirlingMatrix, nN, nS, adLogProbV, adProbV, adCProbV);
+    } else{
+        sampleT_omp(nIter, aptGSLRNG, aanX, aanT, aadIStore, aadMStore, aadStirlingMatrix, nN, nS, aadLogProbV, aadProbV, aadCProbV);
+    }
 
     for(i = 0; i < nS; i++){
       aanTStore[nIter][i] = anTC[i];
@@ -420,6 +436,11 @@ int main(int argc, char* argv[])
 
  memoryError:
   fprintf(stderr, "Failed allocating memory in main\n");
+  fflush(stderr);
+  exit(EXIT_FAILURE);
+
+ rngError:
+  fprintf(stderr, "Failed allocating GSL RNG objects\n");
   fflush(stderr);
   exit(EXIT_FAILURE);
 }
@@ -1808,6 +1829,95 @@ void sampleT(int nIter, gsl_rng* ptGSLRNG, int** aanX, int **aanT, double** aadI
     }
   }
 }
+
+void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double** aadIStore, double** aadMStore,
+             double** aadStirlingMatrix, int nN, int nS, double **aadLogProbV, double **aadProbV, double **aadCProbV)
+{
+  int i = 0, ii = 0, jj = 0;
+  double logSMALL = log(1e-323);
+  double logBIG = log(1e308);
+  double x,r;
+  int threadid = 0;
+
+  for(ii = 0; ii < nN; ii++){
+  #pragma omp parallel for schedule(static, 200 ) private(threadid, i, jj, x )
+    for(jj = 0; jj < nS; jj++){
+    //Are we actually building with OpenMP? - probably redundant (everything supports OMP nowadays?)
+    #if defined (_OPENMP)
+      threadid = omp_get_thread_num();
+    #else
+      threadid = 0;
+    #endif
+      int nXX = aanX[ii][jj];
+
+      if(nXX == 0){
+        aanT[ii][jj] = 0;
+      }
+      else if(nXX == 1){
+        aanT[ii][jj] = 1;
+      }
+      else{
+        double D = MIN_DBL, dSum = 0.0, dLogNormC = 0.0, u4 = 0.0;
+
+        double rhs = log(aadIStore[nIter][ii]*aadMStore[nIter][jj]);
+                                                                     
+//        long double tmprhs = rhs;
+//
+        double *adLogProbV = aadLogProbV[threadid];
+        double *adCProbV = aadCProbV[threadid];
+        double *adProbV = aadProbV[threadid];
+        gsl_rng *ptGSLRNG = aptGSLRNG[threadid];
+
+        for(i = 0; i < nXX;i++){
+          double i1 = i + 1.0;
+          //adLogProbV[i] = log(aadStirlingMatrix[nXX - 1][i]) + (i1*log(aadIStore[nIter][ii]*aadMStore[nIter][jj]));
+          adLogProbV[i] = (aadStirlingMatrix[nXX - 1][i]) + i1 * rhs;
+          //adProbV[i] = (aadStirlingMatrix[nXX - 1][i]) * tmprhs;
+          //tmprhs = rhs * tmprhs;
+        }
+
+        dSum = 0.0;
+        for(i = 0; i < nXX; i++){
+           double result = 0.0;
+           x = adLogProbV[i];
+           if (x < logSMALL)
+              result = logSMALL;
+           else if(x > logBIG)
+              result = logBIG;
+           else
+              result = x ;
+
+          adProbV[i]= exp(result) ;
+
+
+          //adProbV[i] = safeexp(adLogProbV[i]);
+          //adProbV[i] = adLogProbV[i]
+          dSum += adProbV[i];
+        }
+
+        adProbV[0] = adProbV[0]/dSum;
+        adCProbV[0] = adProbV[0];
+
+        for(i = 1; i < nXX; i++){
+          adProbV[i] /= dSum;
+          adCProbV[i] = adProbV[i] + adCProbV[i - 1];
+        }
+
+        u4=gsl_rng_uniform(ptGSLRNG);
+
+        i = 0;
+        while(u4 > adCProbV[i]){
+          i++;
+        }
+        aanT[ii][jj] = i + 1;
+
+      }
+    }
+  }
+}
+
+
+
 
 void outputSamples(char *szOutputDir, int nIter, int nMaxIter, gsl_rng* ptGSLRNG, int nN, int nS, t_Params *ptParams, t_Data *ptData,
 		   double *adThetaStore, int *anJ, double **aadIStore, double** aadMStore)

@@ -140,6 +140,11 @@ void sampleImmigrationRates(int nIter, gsl_rng *ptGSLRNG, double **aadIStore, in
 void sampleT(int nIter, gsl_rng* ptGSLRNG, int** aanX, int **aanT, double** aadIStore, double** aadMStore, 
 	     double** aadStirlingMatrix, int nN, int nS, double *adLogProbV, double *adProbV, double *adCProbV);
 
+void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double** aadIStore, double** aadMStore,
+             double** aadStirlingMatrix, int nN, int nS, double **aadLogProbV, double **aadProbV, double **aadCProbV);
+
+
+
 void outputSamples(char *szOutputDir,int nIter, int nMaxIter, gsl_rng* ptGSLRNG, int nN, int nS, t_Params *ptParams, t_Data *ptData,
 		   double *adThetaStore, int *anJ, double **aadIStore, double** aadMStore);
 
