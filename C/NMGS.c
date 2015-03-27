@@ -37,10 +37,12 @@ static char *usage[] = {"NMGS - Fits multisite HDP neutral model to a matrix of 
 			"\t-l\tinteger\tseed\n",
 			"\t-o\t\toutput samples\n",
 			"\t-s\t\tbootstrap for neutral fit\n",
-			"\t-t\tintger\tnumber of iterations\n",
-			"\t-v\t\tverbose\n"};
+			"\t-t\tinteger\tnumber of iterations\n",
+			"\t-v\t\tverbose\n",
+			"\t-nt\tinteger\tnumber of OpenMP threads to use (default=1)\n",
+			"\t-lm\t\tuse low memory Stirling matrix, and on disk iteration store (to be implemented)\n\n" };
 
-static int nLines   = 13;
+static int nLines   = 14;
 
 static int bVerbose = FALSE;
 
@@ -73,6 +75,8 @@ int main(int argc, char* argv[])
   gsl_set_error_handler_off();
  
 
+  /*get command line params*/
+  getCommandLineParams(&tParams, argc, argv);
  
   numThreads = tParams.numThreads;
 
@@ -101,8 +105,6 @@ int main(int argc, char* argv[])
 
   gsl_set_error_handler_off();
   
-  /*get command line params*/
-  getCommandLineParams(&tParams, argc, argv);
   nMaxIter = tParams.nMaxIter;
 
 
@@ -198,21 +200,52 @@ int main(int argc, char* argv[])
   if(!adStirlingVector)
     goto memoryError;
 
-  adLogProbV = (double *) malloc((nMaxX + 1)*sizeof(double));
-  if(!adLogProbV)
+
+// Threaded versions - basically just a 2 D array of space [threadid][num_stuff]
+  aadLogProbV = (double**) malloc( numThreads * sizeof(double*));
+  if(!aadLogProbV)
     goto memoryError;
+
+  for (i=0; i < numThreads; i++)
+      aadLogProbV[i] = (double *) malloc((nMaxX + 1)*sizeof(double));
+
+
+//  adLogProbV = (double *) malloc((nMaxX + 1)*sizeof(double));
+  adLogProbV = aadLogProbV[0];
+
+
+  aadProbV = (double **) malloc(numThreads * sizeof(double*));
+  if(!aadProbV)
+    goto memoryError;
+
+  for (i=0; i < numThreads; i++)
+      aadProbV[i] = (double *) malloc((nMaxX + 1)*sizeof(double));
+  
+//  adProbV = (double *) malloc((nMaxX + 1)*sizeof(double));
+  adProbV = aadProbV[0];
+  if(!adProbV)
+    goto memoryError;
+
+
+  aadCProbV = (double **) malloc(numThreads * sizeof(double*));
+  if(!aadCProbV)
+    goto memoryError;
+
+  for (i=0; i < numThreads; i++)
+      aadCProbV[i] = (double *) malloc((nMaxX + 1)*sizeof(double));
+
+//  adCProbV = (double *) malloc((nMaxX + 1)*sizeof(double));
+  adCProbV = aadCProbV[0];
+  if(!adCProbV)
+    goto memoryError;
+
+
 
   adLogProbAdjustV = (double *) malloc((nMaxX + 1)*sizeof(double));
   if(!adLogProbAdjustV)
     goto memoryError;
 
-  adProbV = (double *) malloc((nMaxX + 1)*sizeof(double));
-  if(!adProbV)
-    goto memoryError;
 
-  adCProbV = (double *) malloc((nMaxX + 1)*sizeof(double));
-  if(!adCProbV)
-    goto memoryError;
 
   adM = (double *) malloc((nS + 1)*sizeof(double));
   if(!adM)
