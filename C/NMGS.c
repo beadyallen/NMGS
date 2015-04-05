@@ -100,8 +100,9 @@ int main(int argc, char* argv[])
   }
 
  
-  ptGSLRNGType = gsl_rng_default;
-  ptGSLRNG     = gsl_rng_alloc(ptGSLRNGType);
+//  ptGSLRNGType = gsl_rng_default;
+//  ptGSLRNG     = gsl_rng_alloc(ptGSLRNGType);
+  ptGSLRNG     = aptGSLRNG[0];
 
   gsl_set_error_handler_off();
   

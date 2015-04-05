@@ -1,5 +1,6 @@
 CC     = gcc
-CFLAGS = -fopenmp -g
+#CFLAGS = -fopenmp -g
+CFLAGS = -fopenmp -O3
 EFLAGS =  
 EFILE  = NMGS
 LIBS   = -lm -lgsl -lgslcblas -lgomp
