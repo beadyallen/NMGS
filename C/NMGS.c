@@ -318,12 +318,11 @@ int main(int argc, char* argv[])
     
     adThetaStore[nIter] = sampleTheta(ptGSLRNG, dTheta, anTR, nN, nS);
 
-    if (numThreads ==1){
-   	sampleT(nIter, ptGSLRNG, aanX, aanT, aadIStore, aadMStore, aadStirlingMatrix, nN, nS, adLogProbV, adProbV, adCProbV);
-    } else{
-        sampleT_omp(nIter, aptGSLRNG, aanX, aanT, aadIStore, aadMStore, aadStirlingMatrix, nN, nS, aadLogProbV, aadProbV, aadCProbV);
-    }
-
+#if defined (_OPENMP)
+    sampleT_omp(nIter, aptGSLRNG, aanX, aanT, aadIStore, aadMStore, aadStirlingMatrix, nN, nS, aadLogProbV, aadProbV, aadCProbV);
+#else
+    sampleT(nIter, ptGSLRNG, aanX, aanT, aadIStore, aadMStore, aadStirlingMatrix, nN, nS, adLogProbV, adProbV, adCProbV);
+#endif
     for(i = 0; i < nS; i++){
       aanTStore[nIter][i] = anTC[i];
     }
@@ -607,6 +606,7 @@ void getCommandLineParams(t_Params *ptParams,int argc,char *argv[])
 
   szTemp = extractParameter(argc,argv,NUM_THREADS,OPTION);
   if(szTemp != NULL){
+    printf("I have read nthreads = %s\n", szTemp);
     ptParams->numThreads = strtol(szTemp,&cError,10);
     if(*cError != '\0'){
       goto error;
@@ -1870,11 +1870,16 @@ void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double*
   int i = 0, ii = 0, jj = 0;
   double logSMALL = log(1e-323);
   double logBIG = log(1e308);
+
+  double explogBIG = exp(logBIG);
+  double explogSMALL = exp(logSMALL);
+
   double x,r;
   int threadid = 0;
+//  printf("nN = %d\n", nN);
 
   for(ii = 0; ii < nN; ii++){
-  #pragma omp parallel for schedule(static, 200 ) private(threadid, i, jj, x )
+  #pragma omp parallel for schedule(static,1) private(threadid, i, jj, x )
     for(jj = 0; jj < nS; jj++){
     //Are we actually building with OpenMP? - probably redundant (everything supports OMP nowadays?)
     #if defined (_OPENMP)
@@ -1910,18 +1915,19 @@ void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double*
           //tmprhs = rhs * tmprhs;
         }
 
-        dSum = 0.0;
+        dSum = 0.0;     
         for(i = 0; i < nXX; i++){
            double result = 0.0;
            x = adLogProbV[i];
            if (x < logSMALL)
-              result = logSMALL;
+              result = explogSMALL;
            else if(x > logBIG)
-              result = logBIG;
+              result = explogBIG;
            else
-              result = x ;
+              result = exp(x) ;
 
-          adProbV[i]= exp(result) ;
+         // adProbV[i]= exp(result) ;
+            adProbV[i] = result;
 
 
           //adProbV[i] = safeexp(adLogProbV[i]);
@@ -1937,7 +1943,15 @@ void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double*
           adCProbV[i] = adProbV[i] + adCProbV[i - 1];
         }
 
-        u4=gsl_rng_uniform(ptGSLRNG);
+        u4 = gsl_rng_uniform(ptGSLRNG);
+
+//        double tmpvar = adProbV[0] ;
+	
+//	i=1;
+//        while (u4 > tmpvar){
+//		tmpvar += adProbV[i];
+//		i++;
+//	};
 
         i = 0;
         while(u4 > adCProbV[i]){
