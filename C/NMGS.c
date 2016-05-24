@@ -1075,78 +1075,39 @@ double safeexp(double x)
 
 int selectCat(gsl_rng* ptGSLRNG, int nN, double* adP)
 {
-  double *adCP = (double *) malloc(nN*sizeof(double));
   int l = 0;
   double dRand = gsl_rng_uniform(ptGSLRNG);
-
-  if(!adCP)
-    goto memoryError;
-
-  for(l = 0; l < nN; l++){
-    if(l > 0){
-      adCP[l] = adCP[l - 1] + adP[l];
-    }
-    else{
-      adCP[l] = adP[l];
-    }
-  }
+  double dCPsum = adP[0];
 
   l = 0;
-  while(dRand > adCP[l]){
+  while(dRand > dCPsum){
     l++;
+    dCPsum += adP[l];
   }
-
-  free(adCP);
-
   return l;
 
- memoryError:
-  fprintf(stderr,"Failed allocating memory in selectCat\n");
-  fflush(stderr);
-  exit(EXIT_FAILURE);
 }
 
 int selectIntCat(gsl_rng* ptGSLRNG, int nN, int* anN)
 {
-  double *adP = (double *) malloc(nN*sizeof(double));
-  double *adCP = (double *) malloc(nN*sizeof(double));
   int nT = 0, l = 0;
-  double dRand = gsl_rng_uniform(ptGSLRNG);
-
-  if(!adP)
-    goto memoryError;
-
-  if(!adCP)
-    goto memoryError;
 
   for(l = 0; l < nN; l++){
     nT += anN[l];
   }
 
-  for(l = 0; l < nN; l++){
-    adP[l] = ((double) anN[l])/((double) nT);
-    if(l > 0){
-      adCP[l] = adCP[l - 1] + adP[l];
-    }
-    else{
-      adCP[l] = adP[l];
-    }
-  }
+  double dRand = gsl_rng_uniform(ptGSLRNG) * nT ;
+  double dCPsum = anN[0];
 
   l = 0;
-  while(dRand > adCP[l]){
-    l++;
-  }
-
-  free(adP);
-  free(adCP);
-
+  while (dRand > dCPsum){
+	l++;
+	dCPsum += anN[l];
+    	printf("%f ", dCPsum);
+  }	
+  printf("\n");
   return l;
 
- memoryError:
-  fprintf(stderr,"Failed allocating memory in selectCat\n");
-  fflush(stderr);
-  exit(EXIT_FAILURE);
 }
 
 void addUnobserved(t_Data* ptDataR, t_Data *ptData)
@@ -1554,6 +1515,7 @@ void generateDataStick(gsl_rng* ptGSLRNG, t_Data *ptData, int nN, double dTheta,
 	}
 
 	l = selectCat(ptGSLRNG, nSDash, adP);
+	//printf("%d    %d\n", nSDash, l);
 
 	aanX[i][l]++;
       }
@@ -1909,10 +1871,7 @@ void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double*
 
         for(i = 0; i < nXX;i++){
           double i1 = i + 1.0;
-          //adLogProbV[i] = log(aadStirlingMatrix[nXX - 1][i]) + (i1*log(aadIStore[nIter][ii]*aadMStore[nIter][jj]));
           adLogProbV[i] = (aadStirlingMatrix[nXX - 1][i]) + i1 * rhs;
-          //adProbV[i] = (aadStirlingMatrix[nXX - 1][i]) * tmprhs;
-          //tmprhs = rhs * tmprhs;
         }
 
         dSum = 0.0;     
@@ -1926,37 +1885,24 @@ void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double*
            else
               result = exp(x) ;
 
-         // adProbV[i]= exp(result) ;
             adProbV[i] = result;
 
 
-          //adProbV[i] = safeexp(adLogProbV[i]);
-          //adProbV[i] = adLogProbV[i]
           dSum += adProbV[i];
         }
 
-        adProbV[0] = adProbV[0]/dSum;
-        adCProbV[0] = adProbV[0];
+	// inline version of selectCat
+        u4 = gsl_rng_uniform(ptGSLRNG) * dSum;
 
-        for(i = 1; i < nXX; i++){
-          adProbV[i] /= dSum;
-          adCProbV[i] = adProbV[i] + adCProbV[i - 1];
-        }
-
-        u4 = gsl_rng_uniform(ptGSLRNG);
-
-//        double tmpvar = adProbV[0] ;
+        double tmpvar = adProbV[0] ;
 	
-//	i=1;
-//        while (u4 > tmpvar){
-//		tmpvar += adProbV[i];
-//		i++;
-//	};
-
-        i = 0;
-        while(u4 > adCProbV[i]){
-          i++;
-        }
+	i=0;
+	
+        while (u4 > tmpvar){
+		i++;
+		tmpvar += adProbV[i];
+	};
+	//printf("\n");
         aanT[ii][jj] = i + 1;
 
       }
