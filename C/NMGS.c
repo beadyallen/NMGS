@@ -606,7 +606,6 @@ void getCommandLineParams(t_Params *ptParams,int argc,char *argv[])
 
   szTemp = extractParameter(argc,argv,NUM_THREADS,OPTION);
   if(szTemp != NULL){
-    printf("I have read nthreads = %s\n", szTemp);
     ptParams->numThreads = strtol(szTemp,&cError,10);
     if(*cError != '\0'){
       goto error;
@@ -1103,9 +1102,7 @@ int selectIntCat(gsl_rng* ptGSLRNG, int nN, int* anN)
   while (dRand > dCPsum){
 	l++;
 	dCPsum += anN[l];
-    	printf("%f ", dCPsum);
   }	
-  printf("\n");
   return l;
 
 }
@@ -1182,58 +1179,6 @@ void copyData(t_Data* ptDataR, t_Data *ptData)
   exit(EXIT_FAILURE);
 }
 
-void generateData(gsl_rng* ptGSLRNG, t_Data *ptData, int nN, double dTheta, int *anJ, double* adI, int nS, double *adM)
-{
-  int    i = 0, j = 0, n = 0, nSize = nS*10;
-  int    **aanX = (int **) malloc(nN*sizeof(int*));
-  int    nSDash = nS + 1;
-
-  if(!aanX)
-    goto memoryError;
-
-  for(i = 0; i < nN; i++){
-    aanX[i] = (int *) malloc(nSDash*sizeof(int));
-
-    if(!aanX[i])
-      goto memoryError;
-
-    for(j = 0; j < nSDash; j++){
-      aanX[i][j] = 0;
-    }
-
-    for(n = 0; n < anJ[i]; n++){
-      double dImmigrate = adI[i]/(adI[i] + (double) n);
-      double dRand = gsl_rng_uniform(ptGSLRNG);
-      int    l = -1;
-
-      if(dRand < dImmigrate){
-	l = selectCat(ptGSLRNG, nSDash, adM);
-      }
-      else{
-	double adP[nSDash];
-
-	for(j = 0; j < nSDash; j++){
-	  adP[j] = ((double) aanX[i][j])/((double) n);
-	}
-
-	l = selectCat(ptGSLRNG, nSDash, adP);
-      }
-
-      aanX[i][l]++;
-    }
-  }
-
-  ptData->aanX = aanX;
-  ptData->nS = nSDash;
-  ptData->nN = nN;
-
-  return;
-
- memoryError:
-  fprintf(stderr,"Failed allocating memory in generateData\n");
-  fflush(stderr);
-  exit(EXIT_FAILURE);
-}
 
 void reallocateData(t_Data *ptData)
 {
@@ -1515,7 +1460,6 @@ void generateDataStick(gsl_rng* ptGSLRNG, t_Data *ptData, int nN, double dTheta,
 	}
 
 	l = selectCat(ptGSLRNG, nSDash, adP);
-	//printf("%d    %d\n", nSDash, l);
 
 	aanX[i][l]++;
       }
@@ -1629,7 +1573,6 @@ double calcNLLikelihood(t_Data *ptData, double dTheta, double* adI, double *adM)
 
       dRet += gsl_sf_lngamma(adAlpha[j] + (double) aanX[i][j]) - gsl_sf_lngamma(adAlpha[j]); 
     
-      // printf("%d %d %f\n",i,j,dRet);
     }
 
     dRet +=  gsl_sf_lngamma(dSumAlpha) - gsl_sf_lngamma(dSumAlpha + dJ);
@@ -1838,7 +1781,6 @@ void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double*
 
   double x,r;
   int threadid = 0;
-//  printf("nN = %d\n", nN);
 
   for(ii = 0; ii < nN; ii++){
   #pragma omp parallel for schedule(static,1) private(threadid, i, jj, x )
@@ -1902,7 +1844,6 @@ void sampleT_omp(int nIter, gsl_rng** aptGSLRNG, int** aanX, int **aanT, double*
 		i++;
 		tmpvar += adProbV[i];
 	};
-	//printf("\n");
         aanT[ii][jj] = i + 1;
 
       }
