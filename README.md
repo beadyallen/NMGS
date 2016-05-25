@@ -5,6 +5,7 @@ Implementation for the paper on [Linking statistical and ecological theory: Hubb
 
 This fork is intended to fix a couple of small bugs, improve the efficiency (most notably wrt memory usage), and also parallelise with OpenMP.
 
+
 The intention is to merge back into the source codebase.
 
 And since it's a work in progress, **IT MAY NOT BUILD, LET ALONE RUN**

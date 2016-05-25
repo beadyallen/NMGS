@@ -1,9 +1,9 @@
 CC     = gcc
 #CFLAGS = -fopenmp -g
-CFLAGS = -fopenmp -O3
+CFLAGS = -fopenmp -O3 -pg -g
 EFLAGS =  
 EFILE  = NMGS
-LIBS   = -lm -lgsl -lgslcblas -lgomp
+LIBS   = -lm -lgsl -lgslcblas -lgomp -pg -g
 OBJS   = NMGS.o 
 
 $(EFILE) : $(OBJS)
